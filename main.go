@@ -9,10 +9,27 @@ import (
 type cliCommand struct {
 	name        string
 	description string
-	callback    func() error
+	callback    func(*config) error
+}
+
+type config struct {
+	registry func() map[string]cliCommand
+	next     *string
+	previous *string
+}
+
+type LocationArea struct {
+	Count    int     `json:"count"`
+	Next     *string `json:"next"`
+	Previous *string `json:"previous"`
+	Results  []struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"results"`
 }
 
 func main() {
+	cfg := &config{}
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Println("Pokedex>")
@@ -24,7 +41,7 @@ func main() {
 		if !exists {
 			fmt.Println("Unknown command")
 		}
-		err := command.callback()
+		err := command.callback(cfg)
 		if err != nil {
 			fmt.Println(err)
 		}
