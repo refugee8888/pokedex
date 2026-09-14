@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+
+	"github.com/refugee8888/pokedex/internal/pokecache"
 )
 
 type cliCommand struct {
@@ -16,6 +18,7 @@ type config struct {
 	registry func() map[string]cliCommand
 	next     *string
 	previous *string
+	cache    *pokecache.Cache
 }
 
 type LocationArea struct {
