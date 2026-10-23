@@ -11,7 +11,7 @@ import (
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config) error
+	callback    func(*config, *Argument) error
 }
 
 type config struct {
@@ -31,8 +31,22 @@ type LocationArea struct {
 	} `json:"results"`
 }
 
+type Pokemons struct {
+	Encounters []struct {
+		Pokemon struct {
+			Name string `json:"name"`
+		} `json:"pokemon"`
+	} `json:"pokemon_encounters"`
+}
+
+type Argument struct {
+	parameter string
+}
+
 func main() {
 	cfg := &config{}
+	param := &Argument{}
+
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Println("Pokedex>")
@@ -44,7 +58,10 @@ func main() {
 		if !exists {
 			fmt.Println("Unknown command")
 		}
-		err := command.callback(cfg)
+		if len(clean) > 1 {
+			param.parameter = clean[1]
+		}
+		err := command.callback(cfg, param)
 		if err != nil {
 			fmt.Println(err)
 		}

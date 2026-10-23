@@ -31,6 +31,11 @@ func supportedCommands() map[string]cliCommand {
 			description: "Map of Pokemon",
 			callback:    commandMapb,
 		},
+		"explore": {
+			name:        "explore",
+			description: "Explore the map location-area",
+			callback:    commandExplore,
+		},
 	}
 	return inputCommand
 }
@@ -49,14 +54,14 @@ func cleanInput(text string) []string {
 	return slice
 }
 
-func commandExit(config *config) error {
+func commandExit(config *config, param *Argument) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp(config *config) error {
+func commandHelp(config *config, param *Argument) error {
 	commands := make([]string, 0)
 	fmt.Println("Welcome to the Pokedex!")
 
@@ -71,7 +76,7 @@ func commandHelp(config *config) error {
 	return nil
 }
 
-func commandMap(cfg *config) error {
+func commandMap(cfg *config, param *Argument) error {
 	url := "https://pokeapi.co/api/v2/location-area/"
 	if cfg.next != nil {
 		url = *cfg.next
@@ -105,7 +110,7 @@ func commandMap(cfg *config) error {
 	return nil
 }
 
-func commandMapb(cfg *config) error {
+func commandMapb(cfg *config, param *Argument) error {
 	url := "https://pokeapi.co/api/v2/location-area/"
 	if cfg.previous != nil {
 		url = *cfg.previous
@@ -133,6 +138,41 @@ func commandMapb(cfg *config) error {
 	cfg.previous = dump.Previous
 	for _, v := range dump.Results {
 		fmt.Println(v.Name)
+	}
+
+	return nil
+}
+
+func commandExplore(cfg *config, name *Argument) error {
+	url := "https://pokeapi.co/api/v2/location-area/"
+	if name != nil {
+		url = url + name.parameter
+	}
+	fmt.Printf("Exploring %s", name.parameter)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer res.Body.Close()
+
+	var dump Pokemons
+	decoder := json.NewDecoder(res.Body)
+	if err := decoder.Decode(&dump); err != nil {
+		return err
+	}
+	/* cfg.previous = dump.Previous
+	for _, v := range dump.Results {
+		fmt.Println(v.Name)
+	} */
+	for _, v := range dump.Encounters {
+		fmt.Println(v.Pokemon.Name)
 	}
 
 	return nil
