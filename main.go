@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/refugee8888/pokedex/internal/pokecache"
 )
@@ -44,11 +45,12 @@ type Argument struct {
 }
 
 func main() {
-	cfg := &config{}
-	param := &Argument{}
+	cfg := &config{cache: pokecache.NewCache(5 * time.Minute)}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
+
+		param := &Argument{}
 		fmt.Println("Pokedex>")
 		scanner.Scan()
 		input := scanner.Text()
@@ -57,6 +59,7 @@ func main() {
 		command, exists := supportedCommands()[clean[0]]
 		if !exists {
 			fmt.Println("Unknown command")
+			continue
 		}
 		if len(clean) > 1 {
 			param.parameter = clean[1]
@@ -65,6 +68,7 @@ func main() {
 		if err != nil {
 			fmt.Println(err)
 		}
+		//fmt.Println(cfg.cache)
 
 	}
 }

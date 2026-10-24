@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -27,7 +28,7 @@ func supportedCommands() map[string]cliCommand {
 			callback:    commandMap,
 		},
 		"mapb": {
-			name:        "map",
+			name:        "mapb",
 			description: "Map of Pokemon",
 			callback:    commandMapb,
 		},
@@ -70,7 +71,7 @@ func commandHelp(config *config, param *Argument) error {
 	}
 
 	if commands != nil {
-		fmt.Println("Usage:\n\nhelp: Displays a help message\nexit: Exit the Pokedex")
+		fmt.Println("Usage:\n\nhelp: Displays a help message\nexit: Exit the Pokedex\nmap: Displays a maps page\nmapb: Goes back to previous map page\nexplore: Used with location argument as 'explore <argument>'. Reveals pokemon in the specified area")
 	}
 
 	return nil
@@ -81,30 +82,51 @@ func commandMap(cfg *config, param *Argument) error {
 	if cfg.next != nil {
 		url = *cfg.next
 	}
-	//prev_url := "https://pokeapi.co/api/v2/location-area/previous"
+	if cachedEntry, ok := cfg.cache.Get(url); ok {
+		var dumpEntry LocationArea
+		err := json.Unmarshal(cachedEntry, &dumpEntry)
+		if err != nil {
+			return err
+		}
+		for _, v := range dumpEntry.Results {
+			fmt.Println(v.Name)
+		}
+		cfg.previous = dumpEntry.Previous
+		cfg.next = dumpEntry.Next
+	} else {
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
+		//prev_url := "https://pokeapi.co/api/v2/location-area/previous"
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
 
-	defer res.Body.Close()
+		client := &http.Client{}
+		res, err := client.Do(req)
+		if err != nil {
+			return err
+		}
 
-	var dump LocationArea
-	decoder := json.NewDecoder(res.Body)
-	if err := decoder.Decode(&dump); err != nil {
-		return err
-	}
-	cfg.previous = dump.Previous
-	cfg.next = dump.Next
-	for _, v := range dump.Results {
-		fmt.Println(v.Name)
+		defer res.Body.Close()
+
+		var dump LocationArea
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+
+		cfg.cache.Add(url, body)
+		if err := json.Unmarshal(body, &dump); err != nil {
+			return err
+		}
+
+		cfg.previous = dump.Previous
+		cfg.next = dump.Next
+
+		for _, v := range dump.Results {
+			fmt.Println(v.Name)
+		}
 	}
 
 	return nil
@@ -115,29 +137,48 @@ func commandMapb(cfg *config, param *Argument) error {
 	if cfg.previous != nil {
 		url = *cfg.previous
 	}
-	//prev_url := "https://pokeapi.co/api/v2/location-area/previous"
+	if cachedEntry, ok := cfg.cache.Get(url); ok {
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
+		var dumpEntry LocationArea
+		err := json.Unmarshal(cachedEntry, &dumpEntry)
+		if err != nil {
+			return err
+		}
+		for _, v := range dumpEntry.Results {
+			fmt.Println(v.Name)
+		}
+		cfg.previous = dumpEntry.Previous
+		cfg.next = dumpEntry.Next
+	} else {
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
+		client := &http.Client{}
+		res, err := client.Do(req)
+		if err != nil {
+			return err
+		}
 
-	defer res.Body.Close()
+		defer res.Body.Close()
 
-	var dump LocationArea
-	decoder := json.NewDecoder(res.Body)
-	if err := decoder.Decode(&dump); err != nil {
-		return err
-	}
-	cfg.previous = dump.Previous
-	for _, v := range dump.Results {
-		fmt.Println(v.Name)
+		var dump LocationArea
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+
+		cfg.cache.Add(url, body)
+		if err := json.Unmarshal(body, &dump); err != nil {
+			return err
+		}
+		for _, v := range dump.Results {
+			fmt.Println(v.Name)
+		}
+		cfg.previous = dump.Previous
+		cfg.next = dump.Next
+
 	}
 
 	return nil
@@ -149,30 +190,45 @@ func commandExplore(cfg *config, name *Argument) error {
 		url = url + name.parameter
 	}
 	fmt.Printf("Exploring %s", name.parameter)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
 
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
+	if cachedEntry, ok := cfg.cache.Get(url); ok {
+		var dumpEntry Pokemons
+		err := json.Unmarshal(cachedEntry, &dumpEntry)
+		if err != nil {
+			return err
+		}
+		for _, v := range dumpEntry.Encounters {
+			fmt.Println(v.Pokemon.Name)
+		}
+	} else {
 
-	defer res.Body.Close()
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
 
-	var dump Pokemons
-	decoder := json.NewDecoder(res.Body)
-	if err := decoder.Decode(&dump); err != nil {
-		return err
-	}
-	/* cfg.previous = dump.Previous
-	for _, v := range dump.Results {
-		fmt.Println(v.Name)
-	} */
-	for _, v := range dump.Encounters {
-		fmt.Println(v.Pokemon.Name)
+		client := &http.Client{}
+		res, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+
+		defer res.Body.Close()
+
+		var dump Pokemons
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+
+		cfg.cache.Add(url, body)
+		if err := json.Unmarshal(body, &dump); err != nil {
+			return err
+		}
+
+		for _, v := range dump.Encounters {
+			fmt.Println(v.Pokemon.Name)
+		}
 	}
 
 	return nil
