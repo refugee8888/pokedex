@@ -2,11 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+
+	"github.com/refugee8888/pokedex/internal/mypokedex"
 )
 
 func supportedCommands() map[string]cliCommand {
@@ -36,6 +41,21 @@ func supportedCommands() map[string]cliCommand {
 			name:        "explore",
 			description: "Explore the map location-area",
 			callback:    commandExplore,
+		},
+		"catch": {
+			name:        "catch",
+			description: "Catch pokemon",
+			callback:    commandCatch,
+		},
+		"pokedex": {
+			name:        "pokedex",
+			description: "Checking your pokedex",
+			callback:    commandPokedex,
+		},
+		"inspect": {
+			name:        "inspect",
+			description: "Get pokemon stats",
+			callback:    commandInspect,
 		},
 	}
 	return inputCommand
@@ -104,7 +124,8 @@ func commandMap(cfg *config, param *Argument) error {
 
 		client := &http.Client{}
 		res, err := client.Do(req)
-		if err != nil {
+		if res.StatusCode != http.StatusOK {
+			fmt.Printf("%v\n", res.StatusCode)
 			return err
 		}
 
@@ -116,10 +137,11 @@ func commandMap(cfg *config, param *Argument) error {
 			return err
 		}
 
-		cfg.cache.Add(url, body)
 		if err := json.Unmarshal(body, &dump); err != nil {
 			return err
 		}
+
+		cfg.cache.Add(url, body)
 
 		cfg.previous = dump.Previous
 		cfg.next = dump.Next
@@ -157,7 +179,9 @@ func commandMapb(cfg *config, param *Argument) error {
 		}
 		client := &http.Client{}
 		res, err := client.Do(req)
-		if err != nil {
+		if res.StatusCode != http.StatusOK {
+			fmt.Errorf("request failed: %d", res.StatusCode)
+
 			return err
 		}
 
@@ -169,10 +193,12 @@ func commandMapb(cfg *config, param *Argument) error {
 			return err
 		}
 
-		cfg.cache.Add(url, body)
 		if err := json.Unmarshal(body, &dump); err != nil {
 			return err
 		}
+
+		cfg.cache.Add(url, body)
+
 		for _, v := range dump.Results {
 			fmt.Println(v.Name)
 		}
@@ -186,10 +212,13 @@ func commandMapb(cfg *config, param *Argument) error {
 
 func commandExplore(cfg *config, name *Argument) error {
 	url := "https://pokeapi.co/api/v2/location-area/"
+	if name.parameter == "" {
+		return errors.New("Please enter a valid location")
+	}
 	if name != nil {
 		url = url + name.parameter
 	}
-	fmt.Printf("Exploring %s", name.parameter)
+	fmt.Println("Exploring", name.parameter)
 
 	if cachedEntry, ok := cfg.cache.Get(url); ok {
 		var dumpEntry Pokemons
@@ -209,7 +238,9 @@ func commandExplore(cfg *config, name *Argument) error {
 
 		client := &http.Client{}
 		res, err := client.Do(req)
-		if err != nil {
+		if res.StatusCode != http.StatusOK {
+			fmt.Errorf("request failed: %d", res.StatusCode)
+
 			return err
 		}
 
@@ -221,14 +252,100 @@ func commandExplore(cfg *config, name *Argument) error {
 			return err
 		}
 
-		cfg.cache.Add(url, body)
 		if err := json.Unmarshal(body, &dump); err != nil {
 			return err
 		}
 
+		cfg.cache.Add(url, body)
+
 		for _, v := range dump.Encounters {
 			fmt.Println(v.Pokemon.Name)
 		}
+	}
+
+	return nil
+}
+
+func commandPokedex(cfg *config, param *Argument) error {
+	result := cfg.mypokedex.MyPokemons
+	fmt.Println("Your pokedex:")
+	for k := range result {
+		fmt.Println(" -" + k)
+	}
+
+	return nil
+}
+
+func commandCatch(cfg *config, pokemonName *Argument) error {
+	url := "https://pokeapi.co/api/v2/pokemon/"
+	if pokemonName != nil {
+		url = url + pokemonName.parameter
+	}
+	if pokemonName.parameter == "" {
+		return errors.New("pokemon name required")
+	}
+	// get the pokemon stats
+	// find out base_experience
+	// use base_experience with math rand to determine chance to catch
+	// if caught add pokemon to pokedex
+	// if not print fail not caught; try again
+	fmt.Println("Throwing a Pokeball at " + pokemonName.parameter + "...")
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if res.StatusCode != http.StatusOK {
+		fmt.Errorf("request failed: %d", res.StatusCode)
+		return err
+	}
+	defer res.Body.Close()
+
+	var dump mypokedex.StatsPokemon
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, &dump); err != nil {
+		return err
+	}
+	catchChance := dump.Experience + rand.IntN(dump.Experience)
+	caught := dump.Experience + rand.IntN(30)
+	if catchChance <= caught {
+		fmt.Println("Yay! You've caught", dump.Name)
+
+		cfg.mypokedex.Add(dump)
+
+	} else {
+		fmt.Printf("Tough luck. %s ran away.\n", pokemonName.parameter)
+	}
+
+	return nil
+}
+
+func commandInspect(cfg *config, pokemonName *Argument) error {
+	if pokemonName.parameter == "" {
+		return errors.New("pokemon name required")
+	}
+
+	v, ok := cfg.mypokedex.MyPokemons[pokemonName.parameter]
+	if !ok {
+		fmt.Println("You have not caught that pokemon yet.")
+		return nil
+	}
+
+	fmt.Println("Inspecting " + v.Name + "...")
+
+	fmt.Println("Name: " + v.Name + "\nHeight " + strconv.Itoa(v.Height) + "\nWeight " + strconv.Itoa(v.Weight) + "\nStats: ")
+	for _, s := range v.Stats {
+		fmt.Println(" -" + s.Stat.Name + ": " + strconv.Itoa(s.BaseStat))
+	}
+	fmt.Println("Types: ")
+
+	for _, t := range v.Types {
+		fmt.Println(" -" + t.Type.Name)
 	}
 
 	return nil

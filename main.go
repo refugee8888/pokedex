@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/refugee8888/pokedex/internal/mypokedex"
 	"github.com/refugee8888/pokedex/internal/pokecache"
 )
 
@@ -16,10 +17,11 @@ type cliCommand struct {
 }
 
 type config struct {
-	registry func() map[string]cliCommand
-	next     *string
-	previous *string
-	cache    *pokecache.Cache
+	registry  func() map[string]cliCommand
+	next      *string
+	previous  *string
+	cache     *pokecache.Cache
+	mypokedex *mypokedex.Pokedex
 }
 
 type LocationArea struct {
@@ -45,7 +47,7 @@ type Argument struct {
 }
 
 func main() {
-	cfg := &config{cache: pokecache.NewCache(5 * time.Minute)}
+	cfg := &config{cache: pokecache.NewCache(5 * time.Minute), mypokedex: mypokedex.New()}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
