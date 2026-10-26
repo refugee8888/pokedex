@@ -29,12 +29,12 @@ func supportedCommands() map[string]cliCommand {
 
 		"map": {
 			name:        "map",
-			description: "Map of Pokemon",
+			description: "Map page",
 			callback:    commandMap,
 		},
 		"mapb": {
 			name:        "mapb",
-			description: "Map of Pokemon",
+			description: "Previous map page",
 			callback:    commandMapb,
 		},
 		"explore": {
@@ -75,6 +75,32 @@ func cleanInput(text string) []string {
 	return slice
 }
 
+func fetchHelper(cfg *config, url string, dump any) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("request failed: %d", res.StatusCode)
+	}
+
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(body, dump); err != nil {
+		return err
+	}
+	cfg.cache.Add(url, body)
+
+	return nil
+}
+
 func commandExit(config *config, param *Argument) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 
@@ -83,15 +109,11 @@ func commandExit(config *config, param *Argument) error {
 }
 
 func commandHelp(config *config, param *Argument) error {
-	commands := make([]string, 0)
 	fmt.Println("Welcome to the Pokedex!")
+	fmt.Println("These are all available commands:")
 
 	for _, v := range supportedCommands() {
-		commands = append(commands, v.name)
-	}
-
-	if commands != nil {
-		fmt.Println("Usage:\n\nhelp: Displays a help message\nexit: Exit the Pokedex\nmap: Displays a maps page\nmapb: Goes back to previous map page\nexplore: Used with location argument as 'explore <argument>'. Reveals pokemon in the specified area")
+		fmt.Println(" -" + v.name + ": " + v.description)
 	}
 
 	return nil
@@ -115,33 +137,11 @@ func commandMap(cfg *config, param *Argument) error {
 		cfg.next = dumpEntry.Next
 	} else {
 
-		//prev_url := "https://pokeapi.co/api/v2/location-area/previous"
-
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return err
-		}
-
-		client := &http.Client{}
-		res, err := client.Do(req)
-		if res.StatusCode != http.StatusOK {
-			fmt.Printf("%v\n", res.StatusCode)
-			return err
-		}
-
-		defer res.Body.Close()
-
 		var dump LocationArea
-		body, err := io.ReadAll(res.Body)
+		err := fetchHelper(cfg, url, &dump)
 		if err != nil {
 			return err
 		}
-
-		if err := json.Unmarshal(body, &dump); err != nil {
-			return err
-		}
-
-		cfg.cache.Add(url, body)
 
 		cfg.previous = dump.Previous
 		cfg.next = dump.Next
@@ -149,6 +149,7 @@ func commandMap(cfg *config, param *Argument) error {
 		for _, v := range dump.Results {
 			fmt.Println(v.Name)
 		}
+
 	}
 
 	return nil
@@ -173,31 +174,11 @@ func commandMapb(cfg *config, param *Argument) error {
 		cfg.next = dumpEntry.Next
 	} else {
 
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return err
-		}
-		client := &http.Client{}
-		res, err := client.Do(req)
-		if res.StatusCode != http.StatusOK {
-			fmt.Errorf("request failed: %d", res.StatusCode)
-
-			return err
-		}
-
-		defer res.Body.Close()
-
 		var dump LocationArea
-		body, err := io.ReadAll(res.Body)
+		err := fetchHelper(cfg, url, &dump)
 		if err != nil {
 			return err
 		}
-
-		if err := json.Unmarshal(body, &dump); err != nil {
-			return err
-		}
-
-		cfg.cache.Add(url, body)
 
 		for _, v := range dump.Results {
 			fmt.Println(v.Name)
@@ -231,33 +212,12 @@ func commandExplore(cfg *config, name *Argument) error {
 		}
 	} else {
 
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return err
-		}
-
-		client := &http.Client{}
-		res, err := client.Do(req)
-		if res.StatusCode != http.StatusOK {
-			fmt.Errorf("request failed: %d", res.StatusCode)
-
-			return err
-		}
-
-		defer res.Body.Close()
-
 		var dump Pokemons
-		body, err := io.ReadAll(res.Body)
+
+		err := fetchHelper(cfg, url, &dump)
 		if err != nil {
 			return err
 		}
-
-		if err := json.Unmarshal(body, &dump); err != nil {
-			return err
-		}
-
-		cfg.cache.Add(url, body)
-
 		for _, v := range dump.Encounters {
 			fmt.Println(v.Pokemon.Name)
 		}
@@ -298,8 +258,7 @@ func commandCatch(cfg *config, pokemonName *Argument) error {
 	client := &http.Client{}
 	res, err := client.Do(req)
 	if res.StatusCode != http.StatusOK {
-		fmt.Errorf("request failed: %d", res.StatusCode)
-		return err
+		return fmt.Errorf("request failed: %d", res.StatusCode)
 	}
 	defer res.Body.Close()
 
@@ -311,8 +270,8 @@ func commandCatch(cfg *config, pokemonName *Argument) error {
 	if err := json.Unmarshal(body, &dump); err != nil {
 		return err
 	}
-	catchChance := dump.Experience + rand.IntN(dump.Experience)
-	caught := dump.Experience + rand.IntN(30)
+	catchChance := rand.IntN(dump.Experience)
+	caught := rand.IntN(30)
 	if catchChance <= caught {
 		fmt.Println("Yay! You've caught", dump.Name)
 
